@@ -3,7 +3,6 @@ from pymongo import MongoClient
 from fastapi import FastAPI, HTTPException, Depends, status, UploadFile, File, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from oauth import get_current_user
 from typing import List
 from jwttoken import create_access_token
 from fastapi.security import OAuth2PasswordRequestForm
@@ -15,7 +14,7 @@ from datetime import datetime
 from fastapi.responses import FileResponse
 import os
 import sys
-import shutil
+from io import BytesIO
 from pydantic import BaseModel
 from bson import ObjectId
 from pywebpush import webpush, WebPushException
@@ -194,11 +193,18 @@ async def upload_picture(user=Depends(auth), files: List[UploadFile] = File(...)
         if not file.content_type.startswith("image/"):
             continue  # skip non-image files
 
+        # Read file into memory
+        contents = await file.read()
+        try:
+            image = Image.open(BytesIO(contents))
+        except Exception as e:
+            continue  # skip invalid images
         filename = f"{datetime.utcnow().timestamp()}_{file.filename}"
         file_path = os.path.join(IMAGE_UPLOAD_DIR, filename)
 
-        with open(file_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
+        # Save compressed image
+        image.convert("RGB").save(
+            file_path, format="JPEG", quality=85, optimize=True)
 
         taken_date = get_taken_date(file_path)
         uploaded_date = datetime.utcnow()
